@@ -94,7 +94,7 @@ services:
     container_name: moontv-core
     restart: on-failure
     ports:
-      - '3333:3333'
+      - '3000:3000'
     environment:
       - USERNAME=admin
       - PASSWORD=password
