@@ -124,11 +124,11 @@ volumes:
 ```yml
 services:
   moontv-core:
-    image: ghcr.io/moontechlab/lunatv:latest
+    image: docker.io/zengteng/lunatv:latest
     container_name: moontv-core
     restart: on-failure
     ports:
-      - '3000:3000'
+      - '3333:3333'
     environment:
       - USERNAME=admin
       - PASSWORD=admin_password
