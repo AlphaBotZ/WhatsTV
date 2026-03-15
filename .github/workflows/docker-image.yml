@@ -12,8 +12,6 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  release:
-    types: [ published ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,42 +38,30 @@ jobs:
         run: |
           echo "PLATFORM_NAME=${{ matrix.platform }}" | sed 's|/|-|g' >> $GITHUB_ENV
 
-      - name: Determine Docker tag
-        id: docker-tag
-        run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ github.event.inputs.tag || 'latest' }}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Set lowercase repository owner
+      - name: Set lowercase Docker Hub owner
         id: lowercase
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        run: echo "owner=$(echo '${{ secrets.DOCKER_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
-
         with:
-          images: ghcr.io/moontechlab/lunatv
+          images: docker.io/${{ steps.lowercase.outputs.owner }}/lunatv
           tags: |
             type=raw,value=${{ github.event.inputs.tag || 'latest' }},enable={{is_default_branch}}
-            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
 
       - name: Build and push by digest
         id: build
@@ -85,14 +71,15 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ghcr.io/moontechlab/lunatv:${{ steps.docker-tag.outputs.tag }}
-          outputs: type=image,name=ghcr.io/moontechlab/lunatv,name-canonical=true,push=true
+          tags: docker.io/${{ steps.lowercase.outputs.owner }}/lunatv:${{ github.event.inputs.tag || 'latest' }}
+          outputs: type=image,name=docker.io/${{ steps.lowercase.outputs.owner }}/lunatv,name-canonical=true,push=true
 
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          # write the full digest (including 'sha256:...') into a platform-named file
+          echo "${digest}" > "/tmp/digests/${{ env.PLATFORM_NAME }}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
@@ -117,31 +104,36 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Set lowercase repository owner
+      - name: Set lowercase Docker Hub owner
         id: lowercase
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-
-      - name: Determine Docker tag
-        id: docker-tag
-        run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ github.event.inputs.tag || 'latest' }}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "owner=$(echo '${{ secrets.DOCKER_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create -t ghcr.io/moontechlab/lunatv:${{ steps.docker-tag.outputs.tag }} \
-            $(printf 'ghcr.io/moontechlab/lunatv@sha256:%s ' *)
+          owner=${{ steps.lowercase.outputs.owner }}
+          tag=${{ github.event.inputs.tag || 'latest' }}
+          refs=""
+          # read each file content to get the full digest (including sha256: prefix)
+          for f in *; do
+            digest=$(cat "$f")
+            # skip empty files (just in case)
+            if [ -n "$digest" ]; then
+              refs+="docker.io/${owner}/lunatv@${digest} "
+            fi
+          done
+          if [ -z "$refs" ]; then
+            echo "No digests found in /tmp/digests"
+            exit 1
+          fi
+          docker buildx imagetools create -t docker.io/${owner}/lunatv:${tag} ${refs}
 
   cleanup-refresh:
     runs-on: ubuntu-latest
