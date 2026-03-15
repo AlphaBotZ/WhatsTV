@@ -90,14 +90,14 @@
 ```yml
 services:
   moontv-core:
-    image: docker.io/zengteng/lunatv:latest
+    image: ghcr.io/moontechlab/lunatv:latest
     container_name: moontv-core
     restart: on-failure
     ports:
-      - '3333:3333'
+      - '3000:3000'
     environment:
       - USERNAME=admin
-      - PASSWORD=password
+      - PASSWORD=admin_password
       - NEXT_PUBLIC_STORAGE_TYPE=kvrocks
       - KVROCKS_URL=redis://moontv-kvrocks:6666
     networks:
@@ -124,11 +124,11 @@ volumes:
 ```yml
 services:
   moontv-core:
-    image: docker.io/zengteng/lunatv:latest
+    image: ghcr.io/moontechlab/lunatv:latest
     container_name: moontv-core
     restart: on-failure
     ports:
-      - '3333:3333'
+      - '3000:3000'
     environment:
       - USERNAME=admin
       - PASSWORD=admin_password
